@@ -10,7 +10,6 @@ export default function UploadTab({
   selectedSheet,
   uploadedRows,
   uploadCols,
-  dbStatus,
   saveStatus,
   handleFileUpload,
   handleSheetChange,
@@ -156,17 +155,8 @@ export default function UploadTab({
             </span>
           </label>
 
-          {(dbStatus || saveStatus) && (
+          {saveStatus && (
             <div className="mt-6 space-y-2">
-              {dbStatus && (
-                <div className={`p-3 rounded-lg text-sm ${
-                  dbStatus.includes("success") 
-                    ? "bg-primary-50 text-primary-800 border border-primary-200" 
-                    : "bg-yellow-50 text-yellow-800 border border-yellow-200"
-                }`}>
-                  {dbStatus}
-                </div>
-              )}
               {saveStatus && (
                 <div className={`p-3 rounded-lg text-sm font-medium ${
                   saveStatus.includes("✓") 

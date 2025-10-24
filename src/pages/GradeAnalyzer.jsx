@@ -22,7 +22,6 @@ export default function GradeAnalyzer() {
   const [isLoading, setIsLoading] = useState(false)
   const fileInputRef = useRef(null)
   const [activeTab, setActiveTab] = useState("upload")
-  const [dbStatus, setDbStatus] = useState("")
   const [saveStatus, setSaveStatus] = useState("")
   
   const [overviewStats, setOverviewStats] = useState(null)
@@ -53,7 +52,6 @@ export default function GradeAnalyzer() {
   const [toasts, setToasts] = useState([])
 
   useEffect(() => {
-    initializeDatabase()
     fetchSchoolYears() // Fetch only school years initially
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -107,35 +105,6 @@ export default function GradeAnalyzer() {
     }
   }
 
-  const initializeDatabase = async () => {
-    try {
-      // Initialize database structure
-      const response = await fetch(`${API_BASE}/init_database.php`)
-      const result = await response.json()
-      if (result.status === "success") {
-        setDbStatus("Database initialized successfully")
-        
-        // Seed default data for lookup tables
-        await seedDefaultData()
-        // Don't load data automatically - user must select filters
-      }
-    } catch (error) {
-      console.error("Database init error:", error)
-      setDbStatus("Database initialization failed")
-    }
-  }
-  
-  const seedDefaultData = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/seed_data.php`)
-      const result = await response.json()
-      if (result.status === 'success') {
-        console.log('Default data seeded:', result.data)
-      }
-    } catch (error) {
-      console.error('Error seeding data:', error)
-    }
-  }
   
   const fetchSchoolYears = async () => {
     try {
@@ -617,51 +586,51 @@ export default function GradeAnalyzer() {
     }
   }
   
-  const saveStudentGrades = async (data, filename) => {
-    try {
-      console.log("saveStudentGrades called with:", {
-        dataLength: data.length,
-        academicSessionId,
-        schoolYearId,
-        semesterId
-      })
+  // const saveStudentGrades = async (data, filename) => {
+  //   try {
+  //     console.log("saveStudentGrades called with:", {
+  //       dataLength: data.length,
+  //       academicSessionId,
+  //       schoolYearId,
+  //       semesterId
+  //     })
       
-      if (!academicSessionId) {
-        const errorMsg = 'Academic session not set. Please select school year and semester.'
-        addToast(errorMsg, "error")
-        return { status: 'error', message: errorMsg }
-      }
+  //     if (!academicSessionId) {
+  //       const errorMsg = 'Academic session not set. Please select school year and semester.'
+  //       addToast(errorMsg, "error")
+  //       return { status: 'error', message: errorMsg }
+  //     }
       
-      const formData = new FormData()
-      formData.append("operation", "saveStudentGrades")
-      formData.append("json", JSON.stringify(data))
-      formData.append("academic_session_id", academicSessionId)
+  //     const formData = new FormData()
+  //     formData.append("operation", "saveStudentGrades")
+  //     formData.append("json", JSON.stringify(data))
+  //     formData.append("academic_session_id", academicSessionId)
       
-      console.log("Sending student grades to server...", {
-        operation: "saveStudentGrades",
-        rowCount: data.length,
-        academic_session_id: academicSessionId
-      })
+  //     console.log("Sending student grades to server...", {
+  //       operation: "saveStudentGrades",
+  //       rowCount: data.length,
+  //       academic_session_id: academicSessionId
+  //     })
       
-      const response = await fetch(`${API_BASE}/save_student_grades.php`, { method: "POST", body: formData })
-      const result = await response.json()
+  //     const response = await fetch(`${API_BASE}/save_student_grades.php`, { method: "POST", body: formData })
+  //     const result = await response.json()
       
-      console.log("Student grades response:", result)
+  //     console.log("Student grades response:", result)
       
-      // Log debug info if available
-      if (result.errors && result.errors.length > 0) {
-        console.error("Upload errors:", result.errors)
-      }
-      if (result.columns_found) {
-        console.log("Excel columns found:", result.columns_found)
-      }
+  //     // Log debug info if available
+  //     if (result.errors && result.errors.length > 0) {
+  //       console.error("Upload errors:", result.errors)
+  //     }
+  //     if (result.columns_found) {
+  //       console.log("Excel columns found:", result.columns_found)
+  //     }
       
-      return result
-    } catch (error) {
-      console.error("saveStudentGrades error:", error)
-      return { status: 'error', message: error.message }
-    }
-  }
+  //     return result
+  //   } catch (error) {
+  //     console.error("saveStudentGrades error:", error)
+  //     return { status: 'error', message: error.message }
+  //   }
+  // }
   
   const saveSubjectSummaries = async (data, filename) => {
     try {
@@ -873,7 +842,7 @@ export default function GradeAnalyzer() {
             selectedSheet={selectedSheet} 
             uploadedRows={uploadedRows} 
             uploadCols={uploadCols}
-            dbStatus={dbStatus} 
+ 
             saveStatus={saveStatus} 
             handleFileUpload={handleFileUpload} 
             handleSheetChange={handleSheetChange}
