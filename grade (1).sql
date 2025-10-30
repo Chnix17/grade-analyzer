@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Oct 24, 2025 at 11:17 PM
+-- Generation Time: Oct 30, 2025 at 05:15 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -85,27 +85,6 @@ INSERT INTO `academic_sessions` (`academic_session_id`, `school_year_id`, `semes
 (43, 15, 1, '2025-10-18 08:04:50', '2025-10-18 08:04:50'),
 (44, 15, 2, '2025-10-18 08:04:50', '2025-10-18 08:04:50'),
 (45, 15, 3, '2025-10-18 08:04:50', '2025-10-18 08:04:50');
-
--- --------------------------------------------------------
-
---
--- Table structure for table `grades`
---
-
-CREATE TABLE `grades` (
-  `grade_id` int(11) NOT NULL,
-  `student_id` varchar(50) NOT NULL,
-  `subject_id` int(11) NOT NULL,
-  `academic_session_id` int(11) NOT NULL,
-  `year_level_id` int(11) NOT NULL,
-  `period_id` int(11) NOT NULL,
-  `grade` decimal(5,2) NOT NULL,
-  `category` enum('NMS','PTS','MP','EHP') DEFAULT NULL,
-  `status` enum('PASS','FAIL') DEFAULT NULL,
-  `added_by` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -1358,50 +1337,6 @@ INSERT INTO `tbl_period` (`period_id`, `period_name`, `created_at`, `updated_at`
 -- --------------------------------------------------------
 
 --
--- Table structure for table `teachers`
---
-
-CREATE TABLE `teachers` (
-  `teacher_id` int(11) NOT NULL,
-  `teacher_name` varchar(255) NOT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- --------------------------------------------------------
-
---
--- Table structure for table `upload_logs`
---
-
-CREATE TABLE `upload_logs` (
-  `upload_id` int(11) NOT NULL,
-  `filename` varchar(255) DEFAULT NULL,
-  `records_count` int(11) DEFAULT 0,
-  `upload_date` timestamp NOT NULL DEFAULT current_timestamp(),
-  `status` enum('SUCCESS','FAILED') DEFAULT NULL,
-  `notes` text DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- --------------------------------------------------------
-
---
--- Table structure for table `users`
---
-
-CREATE TABLE `users` (
-  `user_id` int(11) NOT NULL,
-  `username` varchar(100) NOT NULL,
-  `password` varchar(255) NOT NULL,
-  `full_name` varchar(255) DEFAULT NULL,
-  `department_id` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
--- --------------------------------------------------------
-
---
 -- Table structure for table `year_levels`
 --
 
@@ -1437,21 +1372,6 @@ ALTER TABLE `academic_sessions`
   ADD UNIQUE KEY `uq_session` (`school_year_id`,`semester_id`),
   ADD KEY `school_year_id` (`school_year_id`),
   ADD KEY `semester_id` (`semester_id`);
-
---
--- Indexes for table `grades`
---
-ALTER TABLE `grades`
-  ADD PRIMARY KEY (`grade_id`),
-  ADD UNIQUE KEY `uq_grade_unique` (`student_id`,`subject_id`,`academic_session_id`,`year_level_id`,`period_id`),
-  ADD KEY `student_id` (`student_id`),
-  ADD KEY `subject_id` (`subject_id`),
-  ADD KEY `academic_session_id` (`academic_session_id`),
-  ADD KEY `year_level_id` (`year_level_id`),
-  ADD KEY `period_id` (`period_id`),
-  ADD KEY `category` (`category`),
-  ADD KEY `status` (`status`),
-  ADD KEY `added_by` (`added_by`);
 
 --
 -- Indexes for table `school_years`
@@ -1505,27 +1425,6 @@ ALTER TABLE `tbl_period`
   ADD KEY `period_name_2` (`period_name`);
 
 --
--- Indexes for table `teachers`
---
-ALTER TABLE `teachers`
-  ADD PRIMARY KEY (`teacher_id`),
-  ADD UNIQUE KEY `teacher_name` (`teacher_name`),
-  ADD KEY `idx_teacher_name` (`teacher_name`);
-
---
--- Indexes for table `upload_logs`
---
-ALTER TABLE `upload_logs`
-  ADD PRIMARY KEY (`upload_id`);
-
---
--- Indexes for table `users`
---
-ALTER TABLE `users`
-  ADD PRIMARY KEY (`user_id`),
-  ADD UNIQUE KEY `username` (`username`);
-
---
 -- Indexes for table `year_levels`
 --
 ALTER TABLE `year_levels`
@@ -1542,12 +1441,6 @@ ALTER TABLE `year_levels`
 --
 ALTER TABLE `academic_sessions`
   MODIFY `academic_session_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=46;
-
---
--- AUTO_INCREMENT for table `grades`
---
-ALTER TABLE `grades`
-  MODIFY `grade_id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `school_years`
@@ -1580,24 +1473,6 @@ ALTER TABLE `tbl_period`
   MODIFY `period_id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=63;
 
 --
--- AUTO_INCREMENT for table `teachers`
---
-ALTER TABLE `teachers`
-  MODIFY `teacher_id` int(11) NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT for table `upload_logs`
---
-ALTER TABLE `upload_logs`
-  MODIFY `upload_id` int(11) NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT for table `users`
---
-ALTER TABLE `users`
-  MODIFY `user_id` int(11) NOT NULL AUTO_INCREMENT;
-
---
 -- AUTO_INCREMENT for table `year_levels`
 --
 ALTER TABLE `year_levels`
@@ -1613,17 +1488,6 @@ ALTER TABLE `year_levels`
 ALTER TABLE `academic_sessions`
   ADD CONSTRAINT `fk_session_school_year` FOREIGN KEY (`school_year_id`) REFERENCES `school_years` (`school_year_id`) ON DELETE CASCADE ON UPDATE CASCADE,
   ADD CONSTRAINT `fk_session_semester` FOREIGN KEY (`semester_id`) REFERENCES `semesters` (`semester_id`) ON DELETE CASCADE ON UPDATE CASCADE;
-
---
--- Constraints for table `grades`
---
-ALTER TABLE `grades`
-  ADD CONSTRAINT `fk_grade_added_by` FOREIGN KEY (`added_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_grade_period` FOREIGN KEY (`period_id`) REFERENCES `tbl_period` (`period_id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_grade_session` FOREIGN KEY (`academic_session_id`) REFERENCES `academic_sessions` (`academic_session_id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_grade_student` FOREIGN KEY (`student_id`) REFERENCES `students` (`student_id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_grade_subject` FOREIGN KEY (`subject_id`) REFERENCES `subjects` (`subject_id`) ON DELETE CASCADE ON UPDATE CASCADE,
-  ADD CONSTRAINT `fk_grade_year_level` FOREIGN KEY (`year_level_id`) REFERENCES `year_levels` (`year_level_id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Constraints for table `subject_summaries`
