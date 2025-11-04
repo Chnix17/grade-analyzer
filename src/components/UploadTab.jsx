@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react"
+import { API_BASE } from "../utils/gradeHelpers"
 import { AgGridReact } from "ag-grid-react"
 import { themeQuartz } from "ag-grid-community"
 import { Upload } from "lucide-react"
@@ -41,7 +42,7 @@ export default function UploadTab({
       setLoading(true)
       
       // Fetch all school years (not filtered, for upload)
-      const syResponse = await fetch('http://localhost/grade/api/academic_sessions.php?action=getSchoolYears')
+      const syResponse = await fetch(`${API_BASE}/subject.php?action=getSchoolYears`)
       const syData = await syResponse.json()
       if (syData.status === 'success') {
         setSchoolYears(syData.data)
@@ -57,7 +58,7 @@ export default function UploadTab({
   const fetchSemesters = async (schoolYearId) => {
     try {
       // Fetch all semesters (not filtered, for upload)
-      const semResponse = await fetch('http://localhost/grade/api/academic_sessions.php?action=getSemesters')
+      const semResponse = await fetch(`${API_BASE}/subject.php?action=getSemesters`)
       const semData = await semResponse.json()
       if (semData.status === 'success') {
         setSemesters(semData.data)

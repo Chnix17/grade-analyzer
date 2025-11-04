@@ -95,7 +95,7 @@ export default function GradeAnalyzer() {
   
   const getAcademicSession = async (syId, semId) => {
     try {
-      const response = await fetch(`${API_BASE}/academic_sessions.php?action=getAcademicSession&school_year_id=${syId}&semester_id=${semId}`)
+      const response = await fetch(`${API_BASE}/subject.php?action=getAcademicSession&school_year_id=${syId}&semester_id=${semId}`)
       const result = await response.json()
       if (result.status === 'success') {
         setAcademicSessionId(result.data.academic_session_id)
@@ -109,7 +109,7 @@ export default function GradeAnalyzer() {
   const fetchSchoolYears = async () => {
     try {
       // Fetch school years with grades
-      const syResponse = await fetch(`${API_BASE}/academic_sessions.php?action=getSchoolYears&withGradesOnly=true`)
+      const syResponse = await fetch(`${API_BASE}/subject.php?action=getSchoolYears&withGradesOnly=true`)
       const syData = await syResponse.json()
       if (syData.status === 'success') {
         setSchoolYears(syData.data)
@@ -122,7 +122,7 @@ export default function GradeAnalyzer() {
   const fetchSemesters = async (schoolYearId) => {
     try {
       // Fetch semesters filtered by school year
-      const semResponse = await fetch(`${API_BASE}/academic_sessions.php?action=getSemesters&school_year_id=${schoolYearId}`)
+      const semResponse = await fetch(`${API_BASE}/subject.php?action=getSemesters&school_year_id=${schoolYearId}`)
       const semData = await semResponse.json()
       if (semData.status === 'success') {
         setSemesters(semData.data)
@@ -135,7 +135,7 @@ export default function GradeAnalyzer() {
   const fetchPeriods = async (schoolYearId, semesterId) => {
     try {
       // Fetch periods filtered by school year and semester
-      const periodResponse = await fetch(`${API_BASE}/periods.php?action=getPeriods&school_year_id=${schoolYearId}&semester_id=${semesterId}`)
+      const periodResponse = await fetch(`${API_BASE}/subject.php?action=getPeriods&school_year_id=${schoolYearId}&semester_id=${semesterId}`)
       const periodData = await periodResponse.json()
       if (periodData.status === 'success') {
         setPeriods(periodData.data)
@@ -170,10 +170,10 @@ export default function GradeAnalyzer() {
       const queryString = params.toString() ? `&${params.toString()}` : ''
       
       const [overview, subjects, topSubjects, categories] = await Promise.all([
-        fetch(`${API_BASE}/subject_summaries.php?action=getOverviewStats${queryString}`).then(r => r.json()),
-        fetch(`${API_BASE}/subject_summaries.php?action=getSummaries${queryString}`).then(r => r.json()),
-        fetch(`${API_BASE}/subject_summaries.php?action=getTopSubjects&limit=10${queryString}`).then(r => r.json()),
-        fetch(`${API_BASE}/subject_summaries.php?action=getCategoryDistribution${queryString}`).then(r => r.json())
+        fetch(`${API_BASE}/subject.php?action=getOverviewStats${queryString}`).then(r => r.json()),
+        fetch(`${API_BASE}/subject.php?action=getSummaries${queryString}`).then(r => r.json()),
+        fetch(`${API_BASE}/subject.php?action=getTopSubjects&limit=10${queryString}`).then(r => r.json()),
+        fetch(`${API_BASE}/subject.php?action=getCategoryDistribution${queryString}`).then(r => r.json())
       ])
       
       if (overview.status === 'success') setOverviewStats(overview.data)
@@ -226,7 +226,7 @@ export default function GradeAnalyzer() {
         formData.append("period_id", filterPeriodId)
       }
 
-      const response = await fetch(`${API_BASE}/save_subject_summary.php`, { method: "POST", body: formData })
+      const response = await fetch(`${API_BASE}/subject.php`, { method: "POST", body: formData })
       const result = await response.json()
       
       if (result.status === "success") {
@@ -612,7 +612,7 @@ export default function GradeAnalyzer() {
   //       academic_session_id: academicSessionId
   //     })
       
-  //     const response = await fetch(`${API_BASE}/save_student_grades.php`, { method: "POST", body: formData })
+  //     const response = await fetch(`${API_BASE}/subject.php`, { method: "POST", body: formData })
   //     const result = await response.json()
       
   //     console.log("Student grades response:", result)
