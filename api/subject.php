@@ -166,6 +166,45 @@ class SubjectProcessor {
     }
     
     /**
+     * Find or create student and update college/course
+     */
+    private function findOrCreateStudent($studentId, $studentName, $college = '', $course = '') {
+        // Check if student exists
+        $stmt = $this->conn->prepare("SELECT student_id FROM students WHERE student_id = ? LIMIT 1");
+        $stmt->execute([$studentId]);
+        $exists = $stmt->fetchColumn();
+        
+        if ($exists) {
+            // Update student if college/course provided
+            if (!empty($college) || !empty($course)) {
+                $updateFields = [];
+                $updateParams = [];
+                
+                if (!empty($college)) {
+                    $updateFields[] = "college = ?";
+                    $updateParams[] = $college;
+                }
+                if (!empty($course)) {
+                    $updateFields[] = "course = ?";
+                    $updateParams[] = $course;
+                }
+                
+                if (!empty($updateFields)) {
+                    $updateParams[] = $studentId;
+                    $stmt = $this->conn->prepare("UPDATE students SET " . implode(", ", $updateFields) . " WHERE student_id = ?");
+                    $stmt->execute($updateParams);
+                }
+            }
+        } else {
+            // Create new student
+            $stmt = $this->conn->prepare("INSERT INTO students (student_id, name, college, course) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$studentId, $studentName, $college ?: null, $course ?: null]);
+        }
+        
+        return $studentId;
+    }
+    
+    /**
      * Process Subject Raw Sheet data
      * Main method that orchestrates the batch processing
      */
@@ -190,6 +229,8 @@ class SubjectProcessor {
                 // Extract student and subject data
                 $studentId = $this->getColumnValue($row, ['STUDENT ID', 'Student ID', 'StudentID', 'ID']);
                 $studentName = $this->getColumnValue($row, ['NAME', 'Name', 'Student Name', 'STUDENT NAME']);
+                $college = $this->getColumnValue($row, ['COLLEGE', 'College']);
+                $course = $this->getColumnValue($row, ['COURSE', 'Course', 'PROGRAM', 'Program']);
                 $semester = $this->getColumnValue($row, ['SEMESTER', 'Semester']);
                 $subjectCode = $this->getColumnValue($row, ['CODE', 'Code', 'SUBJECT CODE', 'Subject Code']);
                 $subjectName = $this->getColumnValue($row, ['SUBJECT NAME', 'Subject Name', 'Subject', 'SUBJECT']);
@@ -213,6 +254,9 @@ class SubjectProcessor {
                     $recordsSkipped++;
                     continue;
                 }
+                
+                // Find or create student and update college/course
+                $this->findOrCreateStudent($studentId, $studentName, $college, $course);
                 
                 if (empty($subjectName) && empty($subjectCode)) {
                     $recordsSkipped++;

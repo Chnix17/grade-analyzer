@@ -243,6 +243,81 @@ try {
             ]);
             break;
             
+        case 'getYearLevelSummary':
+            // Get year-level aggregations grouped by period
+            // This aggregates subjects by year level and period, showing zone statistics
+            $sql = "
+                SELECT 
+                    yl.year_level_id,
+                    yl.year_level_name,
+                    p.period_id,
+                    p.period_name,
+                    COUNT(DISTINCT ss.subject_id) as num_subjects,
+                    -- Green Zone = MP + EHP
+                    SUM(ss.mp_count + ss.ehp_count) as green_zone_count,
+                    SUM(ss.nms_count + ss.pts_count + ss.mp_count + ss.ehp_count) as total_grades,
+                    -- Yellow Zone = PTS
+                    SUM(ss.pts_count) as yellow_zone_count,
+                    -- Red Zone = NMS
+                    SUM(ss.nms_count) as red_zone_count
+                FROM subject_summaries ss
+                JOIN academic_sessions acad ON ss.academic_session_id = acad.academic_session_id
+                JOIN year_levels yl ON ss.year_level_id = yl.year_level_id
+                LEFT JOIN tbl_period p ON ss.period_id = p.period_id
+                WHERE 1=1";
+            
+            $params = [];
+            if (!empty($schoolYearId)) {
+                $sql .= " AND acad.school_year_id = ?";
+                $params[] = $schoolYearId;
+            }
+            if (!empty($semesterId)) {
+                $sql .= " AND acad.semester_id = ?";
+                $params[] = $semesterId;
+            }
+            if ($allPeriods !== 'true' && !empty($periodId)) {
+                $sql .= " AND ss.period_id = ?";
+                $params[] = $periodId;
+            }
+            
+            $sql .= " GROUP BY yl.year_level_id, yl.year_level_name, p.period_id, p.period_name
+                ORDER BY yl.year_level_name, p.period_name";
+            
+            $stmt = $conn->prepare($sql);
+            $stmt->execute($params);
+            $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Calculate percentages for each row
+            foreach ($results as &$row) {
+                $totalGrades = intval($row['total_grades']);
+                $greenCount = intval($row['green_zone_count']);
+                $yellowCount = intval($row['yellow_zone_count']);
+                $redCount = intval($row['red_zone_count']);
+                
+                if ($totalGrades > 0) {
+                    $row['green_zone_percentage'] = round(($greenCount / $totalGrades) * 100, 2);
+                    $row['yellow_zone_percentage'] = round(($yellowCount / $totalGrades) * 100, 2);
+                    $row['red_zone_percentage'] = round(($redCount / $totalGrades) * 100, 2);
+                } else {
+                    $row['green_zone_percentage'] = 0;
+                    $row['yellow_zone_percentage'] = 0;
+                    $row['red_zone_percentage'] = 0;
+                }
+                
+                // Ensure integer values
+                $row['num_subjects'] = intval($row['num_subjects']);
+                $row['green_zone_count'] = $greenCount;
+                $row['yellow_zone_count'] = $yellowCount;
+                $row['red_zone_count'] = $redCount;
+                $row['total_grades'] = $totalGrades;
+            }
+            
+            echo json_encode([
+                'status' => 'success',
+                'data' => $results
+            ]);
+            break;
+            
         default:
             throw new Exception('Invalid action specified');
     }

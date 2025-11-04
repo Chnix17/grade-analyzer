@@ -1,7 +1,7 @@
 <?php
     $servername = "localhost";
     $dbusername = "root";
-    $dbpassword = "";
+    $dbpassword = "IsiDro#1515";
     $dbname = "grade";
 
     try {

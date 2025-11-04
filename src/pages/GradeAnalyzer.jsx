@@ -1,14 +1,12 @@
 import React, { useState, useRef, useEffect } from "react"
 import * as XLSX from "xlsx"
 import { ModuleRegistry, AllCommunityModule } from "ag-grid-community"
-import { Upload, Activity, BookOpen} from "lucide-react"
+import { Upload, Activity, BookOpen, Users } from "lucide-react"
 import TabButton from "../components/TabButton"
 import UploadTab from "../components/UploadTab"
 import OverviewTab from "../components/OverviewTab"
 import SubjectAnalysisTab from "../components/SubjectAnalysisTab"
-// import StudentAnalysisTab from "../components/StudentAnalysisTab"
-// import PerformanceTab from "../components/PerformanceTab"
-// import ComparisonTab from "../components/ComparisonTab"
+import YearLevelSummaryTab from "../components/YearLevelSummaryTab"
 import { ToastContainer } from "../components/Toast"
 import { API_BASE } from "../utils/gradeHelpers"
 
@@ -30,6 +28,9 @@ export default function GradeAnalyzer() {
   const [topPerformers, setTopPerformers] = useState([])
   const [subjectPerformance, setSubjectPerformance] = useState([])
   const [categoryDistribution, setCategoryDistribution] = useState([])
+  
+  // New state for year level data
+  const [yearLevelData, setYearLevelData] = useState([])
   
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedSemester, setSelectedSemester] = useState("all")
@@ -169,11 +170,12 @@ export default function GradeAnalyzer() {
       }
       const queryString = params.toString() ? `&${params.toString()}` : ''
       
-      const [overview, subjects, topSubjects, categories] = await Promise.all([
+      const [overview, subjects, topSubjects, categories, yearLevel] = await Promise.all([
         fetch(`${API_BASE}/subject_summaries.php?action=getOverviewStats${queryString}`).then(r => r.json()),
         fetch(`${API_BASE}/subject_summaries.php?action=getSummaries${queryString}`).then(r => r.json()),
         fetch(`${API_BASE}/subject_summaries.php?action=getTopSubjects&limit=10${queryString}`).then(r => r.json()),
-        fetch(`${API_BASE}/subject_summaries.php?action=getCategoryDistribution${queryString}`).then(r => r.json())
+        fetch(`${API_BASE}/subject_summaries.php?action=getCategoryDistribution${queryString}`).then(r => r.json()),
+        fetch(`${API_BASE}/subject_summaries.php?action=getYearLevelSummary${queryString}`).then(r => r.json())
       ])
       
       if (overview.status === 'success') setOverviewStats(overview.data)
@@ -186,6 +188,11 @@ export default function GradeAnalyzer() {
       // Set category distribution from grades table
       if (categories.status === 'success') {
         setCategoryDistribution(categories.data)
+      }
+      
+      // Set year level data
+      if (yearLevel.status === 'success') {
+        setYearLevelData(yearLevel.data || [])
       }
       
       setIsLoading(false)
@@ -586,52 +593,6 @@ export default function GradeAnalyzer() {
     }
   }
   
-  // const saveStudentGrades = async (data, filename) => {
-  //   try {
-  //     console.log("saveStudentGrades called with:", {
-  //       dataLength: data.length,
-  //       academicSessionId,
-  //       schoolYearId,
-  //       semesterId
-  //     })
-      
-  //     if (!academicSessionId) {
-  //       const errorMsg = 'Academic session not set. Please select school year and semester.'
-  //       addToast(errorMsg, "error")
-  //       return { status: 'error', message: errorMsg }
-  //     }
-      
-  //     const formData = new FormData()
-  //     formData.append("operation", "saveStudentGrades")
-  //     formData.append("json", JSON.stringify(data))
-  //     formData.append("academic_session_id", academicSessionId)
-      
-  //     console.log("Sending student grades to server...", {
-  //       operation: "saveStudentGrades",
-  //       rowCount: data.length,
-  //       academic_session_id: academicSessionId
-  //     })
-      
-  //     const response = await fetch(`${API_BASE}/save_student_grades.php`, { method: "POST", body: formData })
-  //     const result = await response.json()
-      
-  //     console.log("Student grades response:", result)
-      
-  //     // Log debug info if available
-  //     if (result.errors && result.errors.length > 0) {
-  //       console.error("Upload errors:", result.errors)
-  //     }
-  //     if (result.columns_found) {
-  //       console.log("Excel columns found:", result.columns_found)
-  //     }
-      
-  //     return result
-  //   } catch (error) {
-  //     console.error("saveStudentGrades error:", error)
-  //     return { status: 'error', message: error.message }
-  //   }
-  // }
-  
   const saveSubjectSummaries = async (data, filename) => {
     try {
       console.log("saveSubjectSummaries called with:", {
@@ -816,9 +777,7 @@ export default function GradeAnalyzer() {
           <TabButton tab="upload" label="Batch Upload" icon={Upload} activeTab={activeTab} onClick={setActiveTab} />
           <TabButton tab="overview" label="Overview" icon={Activity} activeTab={activeTab} onClick={setActiveTab} />
           <TabButton tab="subjects" label="Subject Analysis" icon={BookOpen} activeTab={activeTab} onClick={setActiveTab} />
-          {/* <TabButton tab="students" label="Student Analysis" icon={Users} activeTab={activeTab} onClick={setActiveTab} />
-          <TabButton tab="performance" label="Performance" icon={TrendingUp} activeTab={activeTab} onClick={setActiveTab} />
-          <TabButton tab="comparison" label="Comparison" icon={BarChart3} activeTab={activeTab} onClick={setActiveTab} /> */}
+          <TabButton tab="yearlevel" label="Year Level Summary" icon={Users} activeTab={activeTab} onClick={setActiveTab} />
         </div>
       </div>
 
@@ -859,18 +818,14 @@ export default function GradeAnalyzer() {
           <SubjectAnalysisTab subjectAnalysis={subjectAnalysis} subjectPerformance={subjectPerformance}
             searchTerm={searchTerm} setSearchTerm={setSearchTerm} selectedSemester={selectedSemester} setSelectedSemester={setSelectedSemester} />
         )}
-        {/* 
-        {!isLoading && dataLoaded && activeTab === "students" && (
-          <StudentAnalysisTab studentAnalysis={studentAnalysis} searchTerm={searchTerm} setSearchTerm={setSearchTerm}
-            selectedSemester={selectedSemester} setSelectedSemester={setSelectedSemester} />
+        {!isLoading && dataLoaded && activeTab === "yearlevel" && (
+          <YearLevelSummaryTab 
+            yearLevelData={yearLevelData}
+            filterSchoolYearId={filterSchoolYearId}
+            filterSemesterId={filterSemesterId}
+            filterPeriodId={filterPeriodId}
+          />
         )}
-        {!isLoading && dataLoaded && activeTab === "performance" && (
-          <PerformanceTab subjectPerformance={subjectPerformance} semesterComparison={semesterComparison} />
-        )}
-        {!isLoading && dataLoaded && activeTab === "comparison" && (
-          <ComparisonTab semesterComparison={semesterComparison} />
-        )}
-        */}
       </div>
     </div>
   )
