@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from "react"
 import * as XLSX from "xlsx"
 import { ModuleRegistry, AllCommunityModule } from "ag-grid-community"
-import { Upload, Activity, BookOpen, Users } from "lucide-react"
+import { Upload, Activity, BookOpen, Users, ClipboardList } from "lucide-react"
 import TabButton from "../components/TabButton"
 import UploadTab from "../components/UploadTab"
 import OverviewTab from "../components/OverviewTab"
 import SubjectAnalysisTab from "../components/SubjectAnalysisTab"
 import YearLevelSummaryTab from "../components/YearLevelSummaryTab"
+import SubjectDeliberationTab from "../components/SubjectDeliberationTab"
 import { ToastContainer } from "../components/Toast"
 import { API_BASE } from "../utils/gradeHelpers"
 
@@ -778,6 +779,7 @@ export default function GradeAnalyzer() {
           <TabButton tab="overview" label="Overview" icon={Activity} activeTab={activeTab} onClick={setActiveTab} />
           <TabButton tab="subjects" label="Subject Analysis" icon={BookOpen} activeTab={activeTab} onClick={setActiveTab} />
           <TabButton tab="yearlevel" label="Year Level Summary" icon={Users} activeTab={activeTab} onClick={setActiveTab} />
+          <TabButton tab="deliberation" label="SUBJECT LEVEL DELIBERATION" icon={ClipboardList} activeTab={activeTab} onClick={setActiveTab} />
         </div>
       </div>
 
@@ -824,6 +826,17 @@ export default function GradeAnalyzer() {
             filterSchoolYearId={filterSchoolYearId}
             filterSemesterId={filterSemesterId}
             filterPeriodId={filterPeriodId}
+          />
+        )}
+        {activeTab === "deliberation" && (
+          <SubjectDeliberationTab
+            filterSchoolYearId={filterSchoolYearId}
+            filterSemesterId={filterSemesterId}
+            filterPeriodId={filterPeriodId}
+            schoolYears={schoolYears}
+            semesters={semesters}
+            periods={periods}
+            addToast={addToast}
           />
         )}
       </div>
