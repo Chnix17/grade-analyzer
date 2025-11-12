@@ -15,11 +15,6 @@ const DECISION_ENUMS = ['PROMOTE', 'RETAIN', 'REMEDIATION']
 export default function SubjectDeliberationTab({
   filterSchoolYearId,
   filterSemesterId,
-  filterPeriodId,
-  schoolYears,
-  semesters,
-  periods,
-  academicSessionId,
   addToast
 }) {
   const [file, setFile] = useState(null)
@@ -37,6 +32,7 @@ export default function SubjectDeliberationTab({
   const [batches, setBatches] = useState([])
   const [showMapping, setShowMapping] = useState(false)
   const [computedAcademicSessionId, setComputedAcademicSessionId] = useState(null)
+  const [serverErrors, setServerErrors] = useState([])
   const fileInputRef = useRef(null)
 
   // Compute academic session ID from filter values
@@ -80,7 +76,7 @@ export default function SubjectDeliberationTab({
       fetchDeliberations()
       fetchBatches()
     }
-  }, [filterSchoolYearId, filterSemesterId, filterPeriodId])
+  }, [filterSchoolYearId, filterSemesterId])
 
   const fetchDeliberations = async () => {
     try {
@@ -88,21 +84,23 @@ export default function SubjectDeliberationTab({
       const params = new URLSearchParams()
       if (filterSchoolYearId) params.append('school_year_id', filterSchoolYearId)
       if (filterSemesterId) params.append('semester_id', filterSemesterId)
-      if (filterPeriodId === 'all') {
-        params.append('all_periods', 'true')
-      } else if (filterPeriodId) {
-        params.append('period_id', filterPeriodId)
-      }
       const queryString = params.toString() ? `&${params.toString()}` : ''
       
       const response = await fetch(`${API_BASE}/subject_deliberations.php?action=getRows${queryString}`)
+      
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status} ${response.statusText}`)
+      }
+      
       const result = await response.json()
       if (result.status === 'success') {
         setSavedRows(result.data)
+      } else {
+        throw new Error(result.message || 'Unknown error')
       }
     } catch (error) {
       console.error('Error fetching deliberations:', error)
-      if (addToast) addToast('Failed to fetch deliberations', 'error')
+      if (addToast) addToast(`Failed to fetch deliberations: ${error.message}`, 'error')
     } finally {
       setIsLoading(false)
     }
@@ -145,13 +143,20 @@ export default function SubjectDeliberationTab({
       complete: (results) => {
         if (results.errors.length > 0) {
           console.warn('CSV parsing errors:', results.errors)
+          const errorMsg = results.errors.slice(0, 3).map(e => `Row ${e.row}: ${e.message}`).join(', ')
+          if (addToast) addToast(`CSV parsing warnings: ${errorMsg}`, 'warning')
         }
-        setRawData(results.data)
-        autoMapColumns(results.data)
+        if (results.data && results.data.length > 0) {
+          setRawData(results.data)
+          autoMapColumns(results.data)
+          if (addToast) addToast(`Loaded ${results.data.length} rows from CSV`, 'success')
+        } else {
+          if (addToast) addToast('CSV file appears to be empty', 'error')
+        }
       },
       error: (error) => {
         console.error('CSV parse error:', error)
-        if (addToast) addToast('Error parsing CSV file', 'error')
+        if (addToast) addToast(`Error parsing CSV: ${error.message || 'Invalid file format'}`, 'error')
       }
     })
   }
@@ -163,33 +168,49 @@ export default function SubjectDeliberationTab({
         const data = new Uint8Array(e.target.result)
         const workbook = XLSX.read(data, { type: 'array' })
         const sheetNames = workbook.SheetNames
+        
+        if (sheetNames.length === 0) {
+          if (addToast) addToast('No sheets found in Excel file', 'error')
+          return
+        }
+        
         setSheets(sheetNames)
-        if (sheetNames.length > 0) {
-          setSelectedSheet(sheetNames[0])
-          processSheet(workbook.Sheets[sheetNames[0]])
+        setSelectedSheet(sheetNames[0])
+        processSheet(workbook.Sheets[sheetNames[0]])
+        
+        if (sheetNames.length > 1 && addToast) {
+          addToast(`Found ${sheetNames.length} sheets. Select sheet from dropdown if needed.`, 'info')
         }
       } catch (error) {
         console.error('Error parsing XLSX:', error)
-        if (addToast) addToast('Error parsing Excel file', 'error')
+        if (addToast) addToast(`Error parsing Excel file: ${error.message || 'Invalid file format'}`, 'error')
       }
+    }
+    reader.onerror = () => {
+      if (addToast) addToast('Failed to read file. Please try again.', 'error')
     }
     reader.readAsArrayBuffer(file)
   }
 
   const processSheet = (worksheet) => {
-    const jsonData = XLSX.utils.sheet_to_json(worksheet, {
-      header: hasHeaderRow ? 1 : undefined,
-      defval: '',
-      raw: false
-    })
-    
-    if (jsonData.length === 0) {
-      if (addToast) addToast('No data found in sheet', 'warning')
-      return
-    }
+    try {
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+        defval: '',
+        raw: false
+      })
+      
+      if (jsonData.length === 0) {
+        if (addToast) addToast('No data found in selected sheet', 'warning')
+        return
+      }
 
-    setRawData(jsonData)
-    autoMapColumns(jsonData)
+      setRawData(jsonData)
+      autoMapColumns(jsonData)
+      if (addToast) addToast(`Loaded ${jsonData.length} rows from sheet`, 'success')
+    } catch (error) {
+      console.error('Error processing sheet:', error)
+      if (addToast) addToast(`Error processing sheet: ${error.message}`, 'error')
+    }
   }
 
   const handleSheetChange = (e) => {
@@ -217,15 +238,34 @@ export default function SubjectDeliberationTab({
       const fieldLower = field.key.toLowerCase()
       const labelLower = field.label.toLowerCase()
       
-      // Try exact match
       let matched = fileCols.find(col => {
-        const colLower = col.toLowerCase().trim()
+        const colLower = col.toLowerCase().trim().replace(/\s+/g, ' ')
+        const colNoSpace = colLower.replace(/\s/g, '')
+        const fieldNoSpace = fieldLower.replace(/_/g, '')
+        
         return colLower === fieldLower || 
+               colNoSpace === fieldNoSpace ||
                colLower.includes(fieldLower) ||
                colLower === labelLower.replace(/\([^)]*\)/g, '').trim() ||
-               (fieldLower === 'student_id' && (colLower.includes('student') && colLower.includes('id'))) ||
-               (fieldLower === 'subject_id' && (colLower.includes('subject') && (colLower.includes('id') || colLower.includes('code')))) ||
-               (fieldLower === 'year_level' && (colLower.includes('year') && colLower.includes('level')))
+               (fieldLower === 'student_id' && (
+                 colLower === 'students id number' ||
+                 colLower === 'student id number' ||
+                 (colLower.includes('student') && (colLower.includes('id') || colLower.includes('number')))
+               )) ||
+               (fieldLower === 'student_name' && (
+                 colLower === 'students name' ||
+                 colLower === 'student name' ||
+                 (colLower.includes('student') && colLower.includes('name'))
+               )) ||
+               (fieldLower === 'subject_id' && (
+                 colLower === 'subject code' ||
+                 colLower === 'subject id' ||
+                 (colLower.includes('subject') && (colLower.includes('id') || colLower.includes('code')))
+               )) ||
+               (fieldLower === 'year_level' && (
+                 colLower === 'year level' ||
+                 (colLower.includes('year') && colLower.includes('level'))
+               ))
       })
       
       if (matched) {
@@ -233,8 +273,141 @@ export default function SubjectDeliberationTab({
       }
     })
     
-    setColumnMapping(mapping)
-    setShowMapping(true)
+    // Detect period grade and categorization columns - prioritize actual grade columns over Q1/Q2 if both exist
+    const periodGradeColumns = []
+    const periodMap = new Map()
+    const categorizationMap = new Map()
+    
+    fileCols.forEach(col => {
+      const colLower = col.toLowerCase().trim()
+      if (colLower === 'p1 grade') {
+        periodMap.set(1, { period_id: 1, column: col, period_name: 'Q1', priority: 1 })
+      } else if (colLower === 'p1 categorization') {
+        categorizationMap.set(1, col)
+      } else if (colLower === 'q1 grade' || colLower === 'q1') {
+        if (!periodMap.has(1)) {
+          periodMap.set(1, { period_id: 1, column: col, period_name: 'Q1', priority: 2 })
+        }
+      } else if (colLower === 'q1 categorization') {
+        if (!categorizationMap.has(1)) {
+          categorizationMap.set(1, col)
+        }
+      } else if (colLower === 'p2 grade') {
+        periodMap.set(2, { period_id: 2, column: col, period_name: 'Q2', priority: 1 })
+      } else if (colLower === 'p2 categorization') {
+        categorizationMap.set(2, col)
+      } else if (colLower === 'q2 grade' || colLower === 'q2') {
+        if (!periodMap.has(2)) {
+          periodMap.set(2, { period_id: 2, column: col, period_name: 'Q2', priority: 2 })
+        }
+      } else if (colLower === 'q2 categorization') {
+        if (!categorizationMap.has(2)) {
+          categorizationMap.set(2, col)
+        }
+      } else if (colLower === 'fe grade' || colLower === 'fe') {
+        periodMap.set(63, { period_id: 63, column: col, period_name: 'FE', priority: 1 })
+      } else if (colLower === 'fe categorization') {
+        categorizationMap.set(63, col)
+      } else if (colLower === 'final grade' || colLower === 'final') {
+        periodMap.set(64, { period_id: 64, column: col, period_name: 'Final Grade', priority: 1 })
+      } else if (colLower === 'final categorization') {
+        categorizationMap.set(64, col)
+      }
+    })
+    
+    periodMap.forEach((value, periodId) => {
+      const categorizationCol = categorizationMap.get(periodId)
+      periodGradeColumns.push({ ...value, categorizationColumn: categorizationCol })
+    })
+    
+    setColumnMapping({ ...mapping, _periodGrades: periodGradeColumns })
+    
+    const allRequiredMapped = REQUIRED_FIELDS.every(field => mapping[field])
+    
+    if (allRequiredMapped) {
+      if (addToast) {
+        const periodInfo = periodGradeColumns.length > 0 ? ` (${periodGradeColumns.length} period grades found)` : ''
+        addToast(`✓ Auto-mapped ${Object.keys(mapping).length} columns${periodInfo}`, 'success')
+      }
+      
+      // Create records for each period
+      const mapped = []
+      data.forEach((row, index) => {
+        if (periodGradeColumns.length > 0) {
+          // Create one record per period
+          periodGradeColumns.forEach(periodInfo => {
+            const gradeValue = row[periodInfo.column]
+            const normalizedValue = typeof gradeValue === 'string' ? gradeValue.trim().toUpperCase() : gradeValue
+            if (gradeValue && gradeValue !== '' && normalizedValue !== 'NA') {
+              const mappedRow = { _rowIndex: index, _period_id: periodInfo.period_id, _period_name: periodInfo.period_name }
+              targetFields.forEach(field => {
+                const sourceCol = mapping[field.key]
+                if (sourceCol && row[sourceCol] !== undefined) {
+                  let value = row[sourceCol]
+                  if (typeof value === 'string') {
+                    value = value.trim()
+                  }
+                  mappedRow[field.key] = value || null
+                } else {
+                  mappedRow[field.key] = null
+                }
+              })
+              
+              // Set grade from period column
+              mappedRow.grade = gradeValue
+              
+              // Set categorization from period categorization column
+              if (periodInfo.categorizationColumn) {
+                const categorizationValue = row[periodInfo.categorizationColumn]
+                if (categorizationValue && categorizationValue !== '' && categorizationValue.toUpperCase() !== 'NA') {
+                  mappedRow.categorization = categorizationValue
+                }
+              }
+              
+              // Infer status from grade
+              const grade = parseFloat(gradeValue)
+              if (!isNaN(grade)) {
+                mappedRow.status = grade >= 75 ? 'PASS' : 'FAIL'
+              }
+              
+              mapped.push(mappedRow)
+            }
+          })
+        } else {
+          // No period columns, single record
+          const mappedRow = { _rowIndex: index }
+          targetFields.forEach(field => {
+            const sourceCol = mapping[field.key]
+            if (sourceCol && row[sourceCol] !== undefined) {
+              let value = row[sourceCol]
+              if (typeof value === 'string') {
+                value = value.trim()
+              }
+              mappedRow[field.key] = value || null
+            } else {
+              mappedRow[field.key] = null
+            }
+          })
+          
+          // Infer status from grade if not provided
+          if (!mappedRow.status && mappedRow.grade !== null && mappedRow.grade !== '') {
+            const grade = parseFloat(mappedRow.grade)
+            if (!isNaN(grade)) {
+              mappedRow.status = grade >= 75 ? 'PASS' : 'FAIL'
+            }
+          }
+          
+          mapped.push(mappedRow)
+        }
+      })
+
+      setMappedData(mapped)
+      validateData(mapped)
+      setShowMapping(false)
+    } else {
+      // Show mapping UI for manual adjustment
+      setShowMapping(true)
+    }
   }
 
   const applyMapping = () => {
@@ -307,14 +480,15 @@ export default function SubjectDeliberationTab({
         })
       }
 
-      // Check for duplicates
+      // Check for true duplicates (same student+subject+period appearing twice)
       if (row.student_id && row.subject_id) {
-        const key = `${row.student_id}_${row.subject_id}_${filterPeriodId || 'none'}`
+        const periodKey = row._period_id || 'none'
+        const key = `${row.student_id}_${row.subject_id}_${periodKey}`
         if (seenKeys.has(key)) {
           errors.push({
             row: index + 1,
             field: 'duplicate',
-            message: 'Duplicate student_id + subject_id combination'
+            message: `Duplicate: Student ${row.student_id} + Subject ${row.subject_id} + Period ${row._period_name || periodKey} already exists in this upload`
           })
         }
         seenKeys.add(key)
@@ -348,40 +522,70 @@ export default function SubjectDeliberationTab({
       formData.append('json', JSON.stringify(mappedData))
       formData.append('filename', file?.name || 'upload.csv')
       formData.append('academic_session_id', computedAcademicSessionId)
-      if (filterPeriodId && filterPeriodId !== 'all') {
-        formData.append('period_id', filterPeriodId)
-      }
 
       const response = await fetch(`${API_BASE}/save_subject_deliberations.php`, {
         method: 'POST',
         body: formData
       })
 
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status} ${response.statusText}`)
+      }
+
       const result = await response.json()
       if (result.status === 'success') {
-        if (addToast) addToast(`Successfully saved ${result.saved} records!`, 'success')
+        const successMsg = result.saved > 0 
+          ? `Successfully saved ${result.saved} record${result.saved > 1 ? 's' : ''}!` 
+          : 'Upload completed'
+        
+        if (addToast) addToast(successMsg, 'success')
+        
         if (result.errors && result.errors.length > 0) {
           console.warn('Server validation errors:', result.errors)
-          if (addToast) addToast(`${result.errors.length} rows had validation errors`, 'warning')
+          setServerErrors(result.errors)
+          
+          const errorSummary = {}
+          result.errors.forEach(err => {
+            const reason = err.reason || 'Unknown error'
+            errorSummary[reason] = (errorSummary[reason] || 0) + 1
+          })
+          
+          const errorMessages = Object.entries(errorSummary).map(([reason, count]) => 
+            `${count} row${count > 1 ? 's' : ''}: ${reason}`
+          )
+          
+          if (addToast) {
+            addToast(`Upload completed with ${result.errors.length} error${result.errors.length > 1 ? 's' : ''}`, 'warning')
+            errorMessages.slice(0, 3).forEach(msg => addToast(msg, 'warning'))
+            if (errorMessages.length > 3) {
+              addToast(`+ ${errorMessages.length - 3} more error types`, 'warning')
+            }
+          }
+        } else {
+          setServerErrors([])
         }
+        
         fetchDeliberations()
         fetchBatches()
-        // Reset upload state
-        setFile(null)
-        setRawData([])
-        setMappedData([])
-        setColumnMapping({})
-        setValidationErrors([])
-        setShowMapping(false)
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ''
+        
+        if (result.errors && result.errors.length === 0) {
+          setFile(null)
+          setRawData([])
+          setMappedData([])
+          setColumnMapping({})
+          setValidationErrors([])
+          setShowMapping(false)
+          if (fileInputRef.current) {
+            fileInputRef.current.value = ''
+          }
         }
       } else {
-        if (addToast) addToast(`Error: ${result.message}`, 'error')
+        if (addToast) addToast(`Error: ${result.message || 'Unknown error occurred'}`, 'error')
       }
     } catch (error) {
       console.error('Error saving:', error)
-      if (addToast) addToast('Failed to save data', 'error')
+      const errorMsg = error.message || 'Failed to save data. Please check your connection and try again.'
+      if (addToast) addToast(errorMsg, 'error')
     } finally {
       setIsSaving(false)
     }
@@ -412,22 +616,59 @@ export default function SubjectDeliberationTab({
 
   const gridColumns = useMemo(() => {
     if (mappedData.length > 0) {
-      return targetFields.map(field => ({
-        headerName: field.label,
-        field: field.key,
-        flex: 1,
-        sortable: true,
-        filter: true,
-        resizable: true,
-        cellRenderer: (params) => {
-          if (params.colDef.field === 'status' && params.value) {
+      // Show mapped columns with period indicator
+      return [
+        { headerName: 'Student ID', field: 'student_id', flex: 1, sortable: true, filter: true },
+        { headerName: 'Student Name', field: 'student_name', flex: 1.5, sortable: true, filter: true },
+        { headerName: 'Subject Code', field: 'subject_id', flex: 1, sortable: true, filter: true },
+        { headerName: 'Year Level', field: 'year_level', flex: 1, sortable: true, filter: true },
+        { 
+          headerName: 'Period', 
+          field: '_period_name', 
+          flex: 1, 
+          sortable: true, 
+          filter: true,
+          cellStyle: { backgroundColor: '#dbeafe', color: '#1e40af', fontWeight: '600' }
+        },
+        { 
+          headerName: 'Grade', 
+          field: 'grade', 
+          flex: 1, 
+          sortable: true, 
+          filter: true,
+          cellStyle: (params) => {
+            if (!params.value) return {}
+            const grade = parseFloat(params.value)
+            if (isNaN(grade)) return {}
+            
+            if (grade >= 80) return { backgroundColor: '#d1fae5', color: '#065f46', fontWeight: '600' }
+            if (grade >= 75) return { backgroundColor: '#dcfce7', color: '#166534', fontWeight: '600' }
+            if (grade >= 60) return { backgroundColor: '#fef3c7', color: '#92400e', fontWeight: '600' }
+            if (grade >= 50) return { backgroundColor: '#fed7aa', color: '#9a3412', fontWeight: '600' }
+            return { backgroundColor: '#fee2e2', color: '#991b1b', fontWeight: '600' }
+          }
+        },
+        { 
+          headerName: 'Categorization', 
+          field: 'categorization', 
+          flex: 2, 
+          sortable: true, 
+          filter: true
+        },
+        { 
+          headerName: 'Status', 
+          field: 'status', 
+          flex: 1, 
+          sortable: true, 
+          filter: true,
+          cellRenderer: (params) => {
+            if (!params.value) return ''
             const status = params.value.toUpperCase()
-            const color = status === 'PASS' ? 'text-green-600' : 'text-red-600'
+            const color = status === 'PASS' ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'
             return <span className={color}>{status}</span>
           }
-          return params.value ?? ''
         }
-      }))
+      ]
     } else if (savedRows.length > 0) {
       return [
         { headerName: 'Student ID', field: 'student_id', flex: 1, sortable: true, filter: true },
@@ -437,6 +678,7 @@ export default function SubjectDeliberationTab({
         { headerName: 'Period', field: 'period_name', flex: 1, sortable: true, filter: true },
         { headerName: 'Raw Score', field: 'raw_score', flex: 1, sortable: true, filter: true },
         { headerName: 'Grade', field: 'grade', flex: 1, sortable: true, filter: true },
+        { headerName: 'Categorization', field: 'categorization', flex: 2, sortable: true, filter: true },
         { 
           headerName: 'Status', 
           field: 'status', 
@@ -568,7 +810,7 @@ export default function SubjectDeliberationTab({
         </div>
       )}
 
-      {/* Validation Errors */}
+      {/* Client-Side Validation Errors */}
       {validationErrors.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
@@ -589,6 +831,54 @@ export default function SubjectDeliberationTab({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Server-Side Errors */}
+      {serverErrors.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertCircle className="text-amber-600" size={20} />
+            <h3 className="text-lg font-bold text-amber-900">
+              Server Validation Errors ({serverErrors.length})
+            </h3>
+          </div>
+          
+          <div className="mb-3">
+            {(() => {
+              const errorSummary = {}
+              serverErrors.forEach(err => {
+                const key = `${err.reason}${err.value ? `: ${err.value}` : ''}`
+                errorSummary[key] = (errorSummary[key] || [])
+                errorSummary[key].push(err.row)
+              })
+              
+              return (
+                <div className="space-y-2">
+                  {Object.entries(errorSummary).slice(0, 5).map(([error, rows], idx) => (
+                    <div key={idx} className="text-sm">
+                      <span className="font-semibold text-amber-900">{error}</span>
+                      <div className="text-amber-700 ml-4">
+                        Affected rows: {rows.length <= 5 ? rows.join(', ') : `${rows.slice(0, 5).join(', ')} + ${rows.length - 5} more`}
+                      </div>
+                    </div>
+                  ))}
+                  {Object.keys(errorSummary).length > 5 && (
+                    <div className="text-sm text-amber-600 font-medium">
+                      ... and {Object.keys(errorSummary).length - 5} more error types
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
+          
+          <button
+            onClick={() => setServerErrors([])}
+            className="text-sm text-amber-700 hover:text-amber-900 font-medium underline"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 

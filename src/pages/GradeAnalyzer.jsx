@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from "react"
 import * as XLSX from "xlsx"
 import { ModuleRegistry, AllCommunityModule } from "ag-grid-community"
-import { Upload, Activity, BookOpen, Users, ClipboardList } from "lucide-react"
+import { Upload, Activity, BookOpen, Users, ClipboardList, Eye } from "lucide-react"
 import TabButton from "../components/TabButton"
 import UploadTab from "../components/UploadTab"
 import OverviewTab from "../components/OverviewTab"
 import SubjectAnalysisTab from "../components/SubjectAnalysisTab"
 import YearLevelSummaryTab from "../components/YearLevelSummaryTab"
 import SubjectDeliberationTab from "../components/SubjectDeliberationTab"
+import SubjectDeliberationView from "../components/SubjectDeliberationView"
 import { ToastContainer } from "../components/Toast"
 import { API_BASE } from "../utils/gradeHelpers"
 
@@ -110,8 +111,7 @@ export default function GradeAnalyzer() {
   
   const fetchSchoolYears = async () => {
     try {
-      // Fetch school years with grades
-      const syResponse = await fetch(`${API_BASE}/academic_sessions.php?action=getSchoolYears&withGradesOnly=true`)
+      const syResponse = await fetch(`${API_BASE}/academic_sessions.php?action=getSchoolYears`)
       const syData = await syResponse.json()
       if (syData.status === 'success') {
         setSchoolYears(syData.data)
@@ -779,7 +779,8 @@ export default function GradeAnalyzer() {
           <TabButton tab="overview" label="Overview" icon={Activity} activeTab={activeTab} onClick={setActiveTab} />
           <TabButton tab="subjects" label="Subject Analysis" icon={BookOpen} activeTab={activeTab} onClick={setActiveTab} />
           <TabButton tab="yearlevel" label="Year Level Summary" icon={Users} activeTab={activeTab} onClick={setActiveTab} />
-          <TabButton tab="deliberation" label="SUBJECT LEVEL DELIBERATION" icon={ClipboardList} activeTab={activeTab} onClick={setActiveTab} />
+          <TabButton tab="deliberation" label="SUBJECT LEVEL DELIBERATION UPLOAD" icon={ClipboardList} activeTab={activeTab} onClick={setActiveTab} />
+          <TabButton tab="deliberation-view" label="DELIBERATION VIEW" icon={Eye} activeTab={activeTab} onClick={setActiveTab} />
         </div>
       </div>
 
@@ -832,10 +833,15 @@ export default function GradeAnalyzer() {
           <SubjectDeliberationTab
             filterSchoolYearId={filterSchoolYearId}
             filterSemesterId={filterSemesterId}
-            filterPeriodId={filterPeriodId}
+            addToast={addToast}
+          />
+        )}
+        {activeTab === "deliberation-view" && (
+          <SubjectDeliberationView
+            filterSchoolYearId={filterSchoolYearId}
+            filterSemesterId={filterSemesterId}
             schoolYears={schoolYears}
             semesters={semesters}
-            periods={periods}
             addToast={addToast}
           />
         )}

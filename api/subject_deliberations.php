@@ -19,7 +19,7 @@ function ensure_tables($conn) {
         file_name VARCHAR(255) NOT NULL,
         uploaded_by VARCHAR(100) NULL,
         uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
 
     // subject_deliberations
     $conn->exec("CREATE TABLE IF NOT EXISTS subject_deliberations (
@@ -32,13 +32,14 @@ function ensure_tables($conn) {
         student_id VARCHAR(50) NOT NULL,
         raw_score DECIMAL(6,2) NULL,
         grade DECIMAL(5,2) NULL,
+        categorization VARCHAR(255) NULL,
         status ENUM('PASS','FAIL') NULL,
         decision ENUM('PROMOTE','RETAIN','REMEDIATION') NULL,
         remarks VARCHAR(500) NULL,
         metadata JSON NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uniq_row (academic_session_id, subject_id, student_id, period_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci");
 }
 
 try {
@@ -56,6 +57,7 @@ try {
                 SELECT 
                     sd.deliberation_id,
                     sd.student_id,
+                    st.name as student_name,
                     sd.subject_id,
                     s.subject_code,
                     s.subject_name,
@@ -65,6 +67,7 @@ try {
                     p.period_name,
                     sd.raw_score,
                     sd.grade,
+                    sd.categorization,
                     sd.status,
                     sd.decision,
                     sd.remarks,
@@ -77,6 +80,7 @@ try {
                 JOIN semesters sem ON acad.semester_id = sem.semester_id
                 JOIN school_years sy ON acad.school_year_id = sy.school_year_id
                 LEFT JOIN tbl_period p ON sd.period_id = p.period_id
+                LEFT JOIN students st ON sd.student_id = st.student_id
                 WHERE 1=1";
 
             $params = [];
@@ -113,6 +117,97 @@ try {
             FROM deliberation_uploads du ORDER BY du.uploaded_at DESC");
             $batches = $stmt->fetchAll(PDO::FETCH_ASSOC);
             echo json_encode(['status' => 'success', 'data' => $batches]);
+            break;
+
+        case 'getAnalytics':
+            $sql = "
+                SELECT 
+                    s.subject_id,
+                    s.subject_code,
+                    s.subject_name,
+                    yl.year_level_id,
+                    yl.year_level_name,
+                    p.period_id,
+                    p.period_name,
+                    COUNT(DISTINCT sd.student_id) as total_takers,
+                    SUM(CASE WHEN sd.status = 'PASS' THEN 1 ELSE 0 END) as pass_count,
+                    SUM(CASE WHEN sd.status = 'FAIL' THEN 1 ELSE 0 END) as fail_count,
+                    ROUND(SUM(CASE WHEN sd.status = 'PASS' THEN 1 ELSE 0 END) * 100.0 / COUNT(DISTINCT sd.student_id), 2) as pass_rate,
+                    SUM(CASE WHEN sd.categorization LIKE '%Not Meeting Standards%' THEN 1 ELSE 0 END) as nms_count,
+                    SUM(CASE WHEN sd.categorization LIKE '%Progressing Towards Standards%' THEN 1 ELSE 0 END) as pts_count,
+                    SUM(CASE WHEN sd.categorization LIKE '%Meeting the Standards%' THEN 1 ELSE 0 END) as ms_count,
+                    SUM(CASE WHEN sd.categorization LIKE '%Excellent%' OR sd.categorization LIKE '%Highly Proficient%' THEN 1 ELSE 0 END) as ehp_count,
+                    ROUND(SUM(CASE WHEN sd.categorization LIKE '%Not Meeting Standards%' THEN 1 ELSE 0 END) * 100.0 / COUNT(DISTINCT sd.student_id), 2) as nms_percentage,
+                    ROUND(SUM(CASE WHEN sd.categorization LIKE '%Progressing Towards Standards%' THEN 1 ELSE 0 END) * 100.0 / COUNT(DISTINCT sd.student_id), 2) as pts_percentage,
+                    ROUND(SUM(CASE WHEN sd.categorization LIKE '%Meeting the Standards%' THEN 1 ELSE 0 END) * 100.0 / COUNT(DISTINCT sd.student_id), 2) as ms_percentage,
+                    ROUND(SUM(CASE WHEN sd.categorization LIKE '%Excellent%' OR sd.categorization LIKE '%Highly Proficient%' THEN 1 ELSE 0 END) * 100.0 / COUNT(DISTINCT sd.student_id), 2) as ehp_percentage,
+                    ROUND(AVG(sd.grade), 2) as average_grade
+                FROM subject_deliberations sd
+                JOIN subjects s ON sd.subject_id = s.subject_id
+                JOIN year_levels yl ON sd.year_level_id = yl.year_level_id
+                JOIN academic_sessions acad ON sd.academic_session_id = acad.academic_session_id
+                LEFT JOIN tbl_period p ON sd.period_id = p.period_id
+                WHERE 1=1";
+
+            $params = [];
+            if (!empty($schoolYearId)) {
+                $sql .= " AND acad.school_year_id = ?";
+                $params[] = $schoolYearId;
+            }
+            if (!empty($semesterId)) {
+                $sql .= " AND acad.semester_id = ?";
+                $params[] = $semesterId;
+            }
+            if ($allPeriods !== 'true' && !empty($periodId)) {
+                $sql .= " AND sd.period_id = ?";
+                $params[] = $periodId;
+            }
+            
+            $sql .= " GROUP BY s.subject_id, yl.year_level_id, p.period_id";
+            $sql .= " ORDER BY s.subject_code, yl.year_level_name, p.period_name";
+
+            $stmt = $conn->prepare($sql);
+            $stmt->execute($params);
+            $analytics = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $overallSql = "
+                SELECT 
+                    COUNT(DISTINCT sd.student_id) as total_students,
+                    COUNT(DISTINCT sd.subject_id) as total_subjects,
+                    COUNT(*) as total_records,
+                    SUM(CASE WHEN sd.status = 'PASS' THEN 1 ELSE 0 END) as total_pass,
+                    SUM(CASE WHEN sd.status = 'FAIL' THEN 1 ELSE 0 END) as total_fail,
+                    ROUND(SUM(CASE WHEN sd.status = 'PASS' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as overall_pass_rate,
+                    ROUND(AVG(sd.grade), 2) as overall_average_grade
+                FROM subject_deliberations sd
+                JOIN academic_sessions acad ON sd.academic_session_id = acad.academic_session_id
+                WHERE 1=1";
+
+            $overallParams = [];
+            if (!empty($schoolYearId)) {
+                $overallSql .= " AND acad.school_year_id = ?";
+                $overallParams[] = $schoolYearId;
+            }
+            if (!empty($semesterId)) {
+                $overallSql .= " AND acad.semester_id = ?";
+                $overallParams[] = $semesterId;
+            }
+            if ($allPeriods !== 'true' && !empty($periodId)) {
+                $overallSql .= " AND sd.period_id = ?";
+                $overallParams[] = $periodId;
+            }
+
+            $overallStmt = $conn->prepare($overallSql);
+            $overallStmt->execute($overallParams);
+            $overall = $overallStmt->fetch(PDO::FETCH_ASSOC);
+
+            echo json_encode([
+                'status' => 'success', 
+                'data' => [
+                    'subject_analytics' => $analytics,
+                    'overall_stats' => $overall
+                ]
+            ]);
             break;
 
         default:

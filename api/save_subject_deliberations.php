@@ -30,6 +30,7 @@ function ensure_tables($conn) {
         student_id VARCHAR(50) NOT NULL,
         raw_score DECIMAL(6,2) NULL,
         grade DECIMAL(5,2) NULL,
+        categorization VARCHAR(255) NULL,
         status ENUM('PASS','FAIL') NULL,
         decision ENUM('PROMOTE','RETAIN','REMEDIATION') NULL,
         remarks VARCHAR(500) NULL,
@@ -66,18 +67,20 @@ try {
     $uploadId = intval($conn->lastInsertId());
 
     // Prepared statements
-    $resolveSubjectStmt = $conn->prepare("SELECT subject_id FROM subjects WHERE subject_id = ? OR subject_code = ? LIMIT 1");
+    $resolveSubjectStmt = $conn->prepare("SELECT subject_id FROM subjects WHERE subject_code = ? LIMIT 1");
+    $createSubjectStmt = $conn->prepare("INSERT INTO subjects (subject_code, subject_name) VALUES (?, ?)");
     $resolveYearLevelStmt = $conn->prepare("SELECT year_level_id FROM year_levels WHERE year_level_id = ? OR year_level_name = ? LIMIT 1");
 
     $upsert = $conn->prepare("INSERT INTO subject_deliberations (
-            upload_id, academic_session_id, year_level_id, period_id, subject_id, student_id, raw_score, grade, status, decision, remarks, metadata
+            upload_id, academic_session_id, year_level_id, period_id, subject_id, student_id, raw_score, grade, categorization, status, decision, remarks, metadata
         ) VALUES (
-            :upload_id, :academic_session_id, :year_level_id, :period_id, :subject_id, :student_id, :raw_score, :grade, :status, :decision, :remarks, :metadata
+            :upload_id, :academic_session_id, :year_level_id, :period_id, :subject_id, :student_id, :raw_score, :grade, :categorization, :status, :decision, :remarks, :metadata
         ) ON DUPLICATE KEY UPDATE 
             upload_id = VALUES(upload_id),
             year_level_id = VALUES(year_level_id),
             raw_score = VALUES(raw_score),
             grade = VALUES(grade),
+            categorization = VALUES(categorization),
             status = VALUES(status),
             decision = VALUES(decision),
             remarks = VALUES(remarks),
@@ -96,30 +99,42 @@ try {
             continue;
         }
 
-        // Resolve subject_id
-        $resolveSubjectStmt->execute([$subjectKey, $subjectKey]);
+        // Extract year level from format like "Y3S1" -> "Y3"
+        $yearLevelExtracted = $yearLevelKey;
+        if (preg_match('/^(Y\d+)S\d+$/i', $yearLevelKey, $matches)) {
+            $yearLevelExtracted = strtoupper($matches[1]);
+        }
+
+        // Resolve subject_id by subject_code (auto-create if not found)
+        $resolveSubjectStmt->execute([$subjectKey]);
         $subject = $resolveSubjectStmt->fetch(PDO::FETCH_ASSOC);
         if (!$subject) {
-            $errors[] = [ 'row' => $index, 'reason' => 'Unknown subject identifier', 'value' => $subjectKey ];
-            continue;
+            $placeholderName = "Subject: " . $subjectKey;
+            $createSubjectStmt->execute([$subjectKey, $placeholderName]);
+            $subjectId = intval($conn->lastInsertId());
+        } else {
+            $subjectId = intval($subject['subject_id']);
         }
-        $subjectId = intval($subject['subject_id']);
 
         // Resolve year_level_id
-        $resolveYearLevelStmt->execute([$yearLevelKey, $yearLevelKey]);
+        $resolveYearLevelStmt->execute([$yearLevelExtracted, $yearLevelExtracted]);
         $yl = $resolveYearLevelStmt->fetch(PDO::FETCH_ASSOC);
         if (!$yl) {
-            $errors[] = [ 'row' => $index, 'reason' => 'Unknown year level', 'value' => $yearLevelKey ];
+            $errors[] = [ 'row' => $index, 'reason' => 'Unknown year level', 'value' => $yearLevelExtracted ];
             continue;
         }
         $yearLevelId = intval($yl['year_level_id']);
 
         $rawScore = isset($r['raw_score']) && $r['raw_score'] !== '' ? $r['raw_score'] : null;
         $grade = isset($r['grade']) && $r['grade'] !== '' ? $r['grade'] : null;
+        $categorization = isset($r['categorization']) && $r['categorization'] !== '' ? substr((string)$r['categorization'], 0, 255) : null;
         $status = isset($r['status']) && $r['status'] !== '' ? strtoupper($r['status']) : null;
         $decision = isset($r['decision']) && $r['decision'] !== '' ? strtoupper($r['decision']) : null;
         $remarks = isset($r['remarks']) ? substr((string)$r['remarks'], 0, 500) : null;
         $metadata = isset($r['metadata']) ? json_encode($r['metadata']) : null;
+
+        // Use period_id from row data if present, otherwise use global periodId
+        $rowPeriodId = isset($r['_period_id']) && $r['_period_id'] !== '' ? intval($r['_period_id']) : $periodId;
 
         // Normalize enums
         if ($status !== null && !in_array($status, ['PASS','FAIL'])) {
@@ -135,11 +150,12 @@ try {
             ':upload_id' => $uploadId,
             ':academic_session_id' => $academicSessionId,
             ':year_level_id' => $yearLevelId,
-            ':period_id' => $periodId,
+            ':period_id' => $rowPeriodId,
             ':subject_id' => $subjectId,
             ':student_id' => $studentId,
             ':raw_score' => $rawScore,
             ':grade' => $grade,
+            ':categorization' => $categorization,
             ':status' => $status,
             ':decision' => $decision,
             ':remarks' => $remarks,

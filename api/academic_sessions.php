@@ -22,8 +22,14 @@ try {
                 $stmt = $conn->prepare("
                     SELECT DISTINCT sy.school_year_id, sy.school_year
                     FROM school_years sy
-                    JOIN academic_sessions acad ON sy.school_year_id = acad.school_year_id
-                    JOIN subject_summaries ss ON acad.academic_session_id = ss.academic_session_id
+                    WHERE EXISTS (
+                        SELECT 1 FROM academic_sessions acad 
+                        WHERE acad.school_year_id = sy.school_year_id
+                        AND EXISTS (
+                            SELECT 1 FROM subject_summaries ss 
+                            WHERE ss.academic_session_id = acad.academic_session_id
+                        )
+                    )
                     ORDER BY sy.school_year DESC
                 ");
             } else {
@@ -48,12 +54,11 @@ try {
             $schoolYearId = $_GET['school_year_id'] ?? '';
             
             if (!empty($schoolYearId)) {
-                // Get semesters that have academic sessions with subject summaries for this school year
+                // Get semesters that have academic sessions for this school year
                 $stmt = $conn->prepare("
                     SELECT DISTINCT s.semester_id, s.semester_name
                     FROM semesters s
                     JOIN academic_sessions acad ON s.semester_id = acad.semester_id
-                    JOIN subject_summaries ss ON acad.academic_session_id = ss.academic_session_id
                     WHERE acad.school_year_id = ?
                     ORDER BY s.semester_id
                 ");
